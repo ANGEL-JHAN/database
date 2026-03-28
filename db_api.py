@@ -4,6 +4,12 @@ from datetime import datetime
 
 app = Flask(__name__)
 
+# 🟢 Ruta de prueba
+@app.route("/")
+def home():
+    return "API Python funcionando 🚀"
+
+# 💾 Guardar datos
 @app.route("/guardar", methods=["POST"])
 def guardar():
     data = request.json
@@ -12,6 +18,16 @@ def guardar():
 
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
+
+    # 🧠 crear tabla si no existe (IMPORTANTE)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS mensajes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        mensaje TEXT,
+        respuesta TEXT,
+        fecha TEXT
+    )
+    """)
 
     cursor.execute("""
     INSERT INTO mensajes (mensaje, respuesta, fecha)
@@ -23,4 +39,6 @@ def guardar():
 
     return jsonify({"status": "guardado"})
 
-app.run(port=5000)
+# 🚀 IMPORTANTE PARA RENDER
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
