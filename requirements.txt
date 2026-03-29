@@ -2,3 +2,4 @@ flask
 gunicorn
 flask-dance
 requests
+python-dotenv
