@@ -4,10 +4,28 @@ from datetime import datetime
 import uuid
 import os
 import json
-import uuid
-import os
 
-# Archivo para guardar keys
+# 🌐 CORS
+from flask_cors import CORS
+
+# 🔐 Seguridad para contraseñas
+from werkzeug.security import generate_password_hash, check_password_hash
+
+# 🔥 OAUTH
+from flask_dance.contrib.google import make_google_blueprint, google
+from flask_dance.contrib.github import make_github_blueprint, github
+from flask_dance.contrib.facebook import make_facebook_blueprint, facebook
+
+# =========================
+# 🚀 CREAR APP
+# =========================
+app = Flask(__name__)
+app.secret_key = "supersecretkey"  # Necesario para sesiones OAuth
+CORS(app)  # Habilita CORS para todas las rutas
+
+# =========================
+# 🔑 KEYS.JSON
+# =========================
 KEYS_FILE = "keys.json"
 
 # Cargar keys existentes
@@ -21,7 +39,7 @@ else:
 def generate_key():
     data = request.json
     usuario = data.get("usuario", "anonimo")
-    
+
     new_key = str(uuid.uuid4())
     api_keys.append({"usuario": usuario, "apiKey": new_key})
 
@@ -34,22 +52,6 @@ def generate_key():
         "apiKey": new_key,
         "mensaje": "Tu API Key fue generada correctamente"
     })
-
-
-# 🔥 OAUTH
-from flask_dance.contrib.google import make_google_blueprint, google
-from flask_dance.contrib.github import make_github_blueprint, github
-from flask_dance.contrib.facebook import make_facebook_blueprint, facebook
-
-# 🔐 Seguridad para contraseñas
-from werkzeug.security import generate_password_hash, check_password_hash
-
-# 🌐 CORS
-from flask_cors import CORS
-
-app = Flask(__name__)
-app.secret_key = "supersecretkey"  # Necesario para sesiones OAuth
-CORS(app)  # Habilita CORS para todas las rutas
 
 # =========================
 # 🔥 LOGIN OAUTH
