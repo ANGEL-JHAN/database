@@ -4,14 +4,127 @@ from datetime import datetime
 import uuid
 import os
 
+# 🔥 OAUTH (AQUÍ VA LO QUE PEDISTE)
+from flask_dance.contrib.google import make_google_blueprint, google
+from flask_dance.contrib.github import make_github_blueprint, github
+from flask_dance.contrib.facebook import make_facebook_blueprint, facebook
+from flask import redirect, url_for
+
 app = Flask(__name__)
 
-# 🟢 Ruta de prueba
+# 🔐 Necesario para sesiones OAuth
+app.secret_key = "supersecretkey"
+
+
+# =========================
+# 🔥 LOGIN OAUTH
+# =========================
+
+# ⚠️ REEMPLAZA CON TUS CLAVES REALES
+google_bp = make_google_blueprint(
+    client_id="GOOGLE_ID",
+    client_secret="GOOGLE_SECRET",
+    redirect_url="/login/google"
+)
+app.register_blueprint(google_bp, url_prefix="/login")
+
+github_bp = make_github_blueprint(
+    client_id="GITHUB_ID",
+    client_secret="GITHUB_SECRET",
+)
+app.register_blueprint(github_bp, url_prefix="/login")
+
+facebook_bp = make_facebook_blueprint(
+    client_id="FACEBOOK_ID",
+    client_secret="FACEBOOK_SECRET",
+)
+app.register_blueprint(facebook_bp, url_prefix="/login")
+
+
+# =========================
+# 🔐 RUTAS LOGIN
+# =========================
+
+@app.route("/login/google")
+def login_google():
+    if not google.authorized:
+        return redirect(url_for("google.login"))
+
+    resp = google.get("/oauth2/v2/userinfo")
+    info = resp.json()
+
+    email = info.get("email")
+
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("INSERT INTO users (email) VALUES (?)", (email,))
+        conn.commit()
+    except:
+        pass
+
+    conn.close()
+
+    return jsonify(info)
+
+
+@app.route("/login/github")
+def login_github():
+    if not github.authorized:
+        return redirect(url_for("github.login"))
+
+    resp = github.get("/user")
+    info = resp.json()
+
+    email = info.get("email") or f"{info.get('login')}@github"
+
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("INSERT INTO users (email) VALUES (?)", (email,))
+        conn.commit()
+    except:
+        pass
+
+    conn.close()
+
+    return jsonify(info)
+
+
+@app.route("/login/facebook")
+def login_facebook():
+    if not facebook.authorized:
+        return redirect(url_for("facebook.login"))
+
+    resp = facebook.get("/me?fields=id,name,email")
+    info = resp.json()
+
+    email = info.get("email") or f"{info.get('id')}@facebook"
+
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("INSERT INTO users (email) VALUES (?)", (email,))
+        conn.commit()
+    except:
+        pass
+
+    conn.close()
+
+    return jsonify(info)
+
+
+# =========================
+# 🟢 TU API ORIGINAL (NO TOCADO)
+# =========================
+
 @app.route("/")
 def home():
     return "API Python funcionando 🚀"
 
-# 💾 Guardar datos (NO TOCADO)
 @app.route("/guardar", methods=["POST"])
 def guardar():
     data = request.json
@@ -42,14 +155,13 @@ def guardar():
 
 
 # =========================
-# 🔥 NUEVO: SISTEMA HOSTING
+# 🔥 SISTEMA HOSTING
 # =========================
 
 def init_db():
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
 
-    # 👤 Usuarios
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -58,7 +170,6 @@ def init_db():
     )
     """)
 
-    # 🖥️ Servidores
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS servers (
         id TEXT,
@@ -75,7 +186,6 @@ def init_db():
 init_db()
 
 
-# 👤 Crear usuario
 @app.route("/users", methods=["POST"])
 def crear_usuario():
     data = request.json
@@ -94,7 +204,6 @@ def crear_usuario():
         conn.close()
 
 
-# 👤 Ver usuarios
 @app.route("/users", methods=["GET"])
 def obtener_users():
     conn = sqlite3.connect("database.db")
@@ -108,7 +217,6 @@ def obtener_users():
     return jsonify(users)
 
 
-# 🖥️ Crear servidor
 @app.route("/servers", methods=["POST"])
 def crear_server():
     data = request.json
@@ -135,7 +243,6 @@ def crear_server():
     })
 
 
-# 📋 Ver servidores
 @app.route("/servers", methods=["GET"])
 def obtener_servers():
     conn = sqlite3.connect("database.db")
@@ -149,7 +256,6 @@ def obtener_servers():
     return jsonify(servers)
 
 
-# 📋 Servidores por usuario
 @app.route("/servers/<int:user_id>", methods=["GET"])
 def servers_usuario(user_id):
     conn = sqlite3.connect("database.db")
@@ -163,7 +269,10 @@ def servers_usuario(user_id):
     return jsonify(servers)
 
 
-# 🚀 IMPORTANTE PARA RENDER
+# =========================
+# 🚀 RENDER
+# =========================
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
