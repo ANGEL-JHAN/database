@@ -3,3 +3,4 @@ gunicorn
 flask-dance
 requests
 python-dotenv
+flask-cors
