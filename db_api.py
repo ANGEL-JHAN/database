@@ -12,8 +12,12 @@ from flask_dance.contrib.facebook import make_facebook_blueprint, facebook
 # 🔐 Seguridad para contraseñas
 from werkzeug.security import generate_password_hash, check_password_hash
 
+# 🌐 CORS
+from flask_cors import CORS
+
 app = Flask(__name__)
 app.secret_key = "supersecretkey"  # Necesario para sesiones OAuth
+CORS(app)  # Habilita CORS para todas las rutas
 
 # =========================
 # 🔥 LOGIN OAUTH
@@ -36,7 +40,6 @@ facebook_bp = make_facebook_blueprint(
     client_secret="FACEBOOK_SECRET",
 )
 app.register_blueprint(facebook_bp, url_prefix="/login")
-
 
 # =========================
 # 🔐 RUTAS LOGIN OAUTH
@@ -95,7 +98,6 @@ def login_facebook():
     conn.close()
     return jsonify(info)
 
-
 # =========================
 # 🟢 API ORIGINAL
 # =========================
@@ -127,7 +129,6 @@ def guardar():
     conn.close()
     return jsonify({"status": "guardado"})
 
-
 # =========================
 # 🔥 SISTEMA HOSTING + DB INIT
 # =========================
@@ -135,7 +136,6 @@ def init_db():
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
 
-    # Tabla users con password agregado
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -160,7 +160,6 @@ def init_db():
 
 init_db()
 
-
 # =========================
 # 🔹 REGISTER (email + contraseña)
 # =========================
@@ -184,7 +183,6 @@ def register():
         return jsonify({"error": "Usuario ya existe"}), 400
     finally:
         conn.close()
-
 
 # =========================
 # 🔹 LOGIN (email + contraseña)
@@ -215,7 +213,6 @@ def login():
     else:
         return jsonify({"error": "Email o contraseña incorrectos"}), 401
 
-
 # =========================
 # 🔹 USERS / SERVERS
 # =========================
@@ -242,7 +239,6 @@ def obtener_users():
     users = cursor.fetchall()
     conn.close()
     return jsonify(users)
-
 
 @app.route("/servers", methods=["POST"])
 def crear_server():
@@ -283,7 +279,6 @@ def servers_usuario(user_id):
     servers = cursor.fetchall()
     conn.close()
     return jsonify(servers)
-
 
 # =========================
 # 🚀 RUN
