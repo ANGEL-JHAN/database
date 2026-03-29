@@ -3,6 +3,38 @@ import sqlite3
 from datetime import datetime
 import uuid
 import os
+import json
+import uuid
+import os
+
+# Archivo para guardar keys
+KEYS_FILE = "keys.json"
+
+# Cargar keys existentes
+if os.path.exists(KEYS_FILE):
+    with open(KEYS_FILE, "r") as f:
+        api_keys = json.load(f)
+else:
+    api_keys = []
+
+@app.route("/generate-key", methods=["POST"])
+def generate_key():
+    data = request.json
+    usuario = data.get("usuario", "anonimo")
+    
+    new_key = str(uuid.uuid4())
+    api_keys.append({"usuario": usuario, "apiKey": new_key})
+
+    # Guardar en keys.json
+    with open(KEYS_FILE, "w") as f:
+        json.dump(api_keys, f, indent=2)
+
+    return jsonify({
+        "usuario": usuario,
+        "apiKey": new_key,
+        "mensaje": "Tu API Key fue generada correctamente"
+    })
+
 
 # 🔥 OAUTH
 from flask_dance.contrib.google import make_google_blueprint, google
