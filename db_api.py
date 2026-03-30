@@ -1,322 +1,187 @@
-from flask import Flask, request, jsonify, redirect, url_for
+from flask import Flask, request, jsonify
 import sqlite3
 from datetime import datetime
 import uuid
 import os
 import json
-
-# 🌐 CORS
 from flask_cors import CORS
-
-# 🔐 Seguridad para contraseñas
 from werkzeug.security import generate_password_hash, check_password_hash
 
-# 🔥 OAUTH
-from flask_dance.contrib.google import make_google_blueprint, google
-from flask_dance.contrib.github import make_github_blueprint, github
-from flask_dance.contrib.facebook import make_facebook_blueprint, facebook
-
 # =========================
-# 🚀 CREAR APP
+# 🚀 APP
 # =========================
 app = Flask(__name__)
-app.secret_key = "supersecretkey"  # Necesario para sesiones OAuth
-CORS(app)  # Habilita CORS para todas las rutas
+app.secret_key = "supersecretkey"
+CORS(app)
 
 # =========================
-# 🔑 KEYS.JSON
+# 🔑 KEYS.JSON + ADMIN
 # =========================
 KEYS_FILE = "keys.json"
+ADMIN_KEY = "123456"
 
-# Cargar keys existentes
 if os.path.exists(KEYS_FILE):
     with open(KEYS_FILE, "r") as f:
         api_keys = json.load(f)
 else:
     api_keys = []
 
+# Añadir key admin si no existe
+if not any(k.get("apiKey") == ADMIN_KEY for k in api_keys):
+    api_keys.append({
+        "usuario": "admin",
+        "apiKey": ADMIN_KEY,
+        "plan": "admin",
+        "uso": 0,
+        "limite": 999999,
+        "resumen": ""  # Guardaremos aquí el contexto resumido
+    })
+    with open(KEYS_FILE, "w") as f:
+        json.dump(api_keys, f, indent=2)
+
+def guardar_keys():
+    with open(KEYS_FILE, "w") as f:
+        json.dump(api_keys, f, indent=2)
+
+def validar_key(key):
+    if not key:
+        return None, "Falta API KEY"
+    for k in api_keys:
+        if k["apiKey"] == key:
+            if k.get("uso",0) >= k.get("limite",999999):
+                return None, "Límite alcanzado"
+            return k, None
+    return None, "API KEY inválida"
+
+# =========================
+# 🔹 GENERAR / ELIMINAR KEYS
+# =========================
 @app.route("/generate-key", methods=["POST"])
 def generate_key():
     data = request.json
     usuario = data.get("usuario", "anonimo")
-
+    plan = data.get("plan", "free")
+    planes = {"free":50,"pro":500,"enterprise":999999}
+    if plan not in planes:
+        return jsonify({"error":"Plan inválido"}),400
     new_key = str(uuid.uuid4())
-    api_keys.append({"usuario": usuario, "apiKey": new_key})
+    nueva_key = {"usuario":usuario,"apiKey":new_key,"plan":plan,"uso":0,"limite":planes[plan],"resumen":""}
+    api_keys.append(nueva_key)
+    guardar_keys()
+    return jsonify({"usuario":usuario,"apiKey":new_key,"plan":plan,"limite":nueva_key["limite"]})
 
-    # Guardar en keys.json
-    with open(KEYS_FILE, "w") as f:
-        json.dump(api_keys, f, indent=2)
-
-    return jsonify({
-        "usuario": usuario,
-        "apiKey": new_key,
-        "mensaje": "Tu API Key fue generada correctamente"
-    })
-
-# =========================
-# 🔥 LOGIN OAUTH
-# =========================
-google_bp = make_google_blueprint(
-    client_id="GOOGLE_ID",
-    client_secret="GOOGLE_SECRET",
-    redirect_url="/login/google"
-)
-app.register_blueprint(google_bp, url_prefix="/login")
-
-github_bp = make_github_blueprint(
-    client_id="GITHUB_ID",
-    client_secret="GITHUB_SECRET",
-)
-app.register_blueprint(github_bp, url_prefix="/login")
-
-facebook_bp = make_facebook_blueprint(
-    client_id="FACEBOOK_ID",
-    client_secret="FACEBOOK_SECRET",
-)
-app.register_blueprint(facebook_bp, url_prefix="/login")
+@app.route("/delete-key/<key>", methods=["DELETE"])
+def delete_key(key):
+    global api_keys
+    antes = len(api_keys)
+    api_keys = [k for k in api_keys if k["apiKey"] != key and k["apiKey"] != ADMIN_KEY]
+    guardar_keys()
+    if len(api_keys)==antes:
+        return jsonify({"error":"Key no encontrada"}),404
+    return jsonify({"success":True})
 
 # =========================
-# 🔐 RUTAS LOGIN OAUTH
-# =========================
-@app.route("/login/google")
-def login_google():
-    if not google.authorized:
-        return redirect(url_for("google.login"))
-    resp = google.get("/oauth2/v2/userinfo")
-    info = resp.json()
-    email = info.get("email")
-
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    try:
-        cursor.execute("INSERT INTO users (email) VALUES (?)", (email,))
-        conn.commit()
-    except:
-        pass
-    conn.close()
-    return jsonify(info)
-
-@app.route("/login/github")
-def login_github():
-    if not github.authorized:
-        return redirect(url_for("github.login"))
-    resp = github.get("/user")
-    info = resp.json()
-    email = info.get("email") or f"{info.get('login')}@github"
-
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    try:
-        cursor.execute("INSERT INTO users (email) VALUES (?)", (email,))
-        conn.commit()
-    except:
-        pass
-    conn.close()
-    return jsonify(info)
-
-@app.route("/login/facebook")
-def login_facebook():
-    if not facebook.authorized:
-        return redirect(url_for("facebook.login"))
-    resp = facebook.get("/me?fields=id,name,email")
-    info = resp.json()
-    email = info.get("email") or f"{info.get('id')}@facebook"
-
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    try:
-        cursor.execute("INSERT INTO users (email) VALUES (?)", (email,))
-        conn.commit()
-    except:
-        pass
-    conn.close()
-    return jsonify(info)
-
-# =========================
-# 🟢 API ORIGINAL
-# =========================
-@app.route("/")
-def home():
-    return "API Python funcionando 🚀"
-
-@app.route("/guardar", methods=["POST"])
-def guardar():
-    data = request.json
-    mensaje = data.get("mensaje")
-    respuesta = data.get("respuesta")
-
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS mensajes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        mensaje TEXT,
-        respuesta TEXT,
-        fecha TEXT
-    )
-    """)
-    cursor.execute("""
-    INSERT INTO mensajes (mensaje, respuesta, fecha)
-    VALUES (?, ?, ?)
-    """, (mensaje, respuesta, str(datetime.now())))
-    conn.commit()
-    conn.close()
-    return jsonify({"status": "guardado"})
-
-# =========================
-# 🔥 SISTEMA HOSTING + DB INIT
+# 🔹 DB INIT
 # =========================
 def init_db():
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
-
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        email TEXT UNIQUE,
-        password TEXT,
-        plan TEXT DEFAULT 'free'
-    )
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE,
+            password TEXT,
+            plan TEXT DEFAULT 'free'
+        )
     """)
-
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS servers (
-        id TEXT,
-        user_id INTEGER,
-        name TEXT,
-        status TEXT,
-        created_at TEXT
-    )
+        CREATE TABLE IF NOT EXISTS servers (
+            id TEXT,
+            user_id INTEGER,
+            name TEXT,
+            status TEXT,
+            created_at TEXT
+        )
     """)
-
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS mensajes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario TEXT,
+            mensaje TEXT,
+            respuesta TEXT,
+            fecha TEXT
+        )
+    """)
     conn.commit()
     conn.close()
-
 init_db()
 
 # =========================
-# 🔹 REGISTER (email + contraseña)
+# 🔹 IA MEMORIA OPTIMIZADA
 # =========================
-@app.route("/register", methods=["POST"])
-def register():
+def generar_respuesta(usuario, mensaje, key_data):
+    """
+    Usa un resumen acumulativo para contexto infinito sin recargar toda la DB
+    """
+    resumen = key_data.get("resumen","")
+    respuesta = f"{resumen} → Respuesta a '{mensaje}'"  # IA simulada con resumen
+    nuevo_resumen = (resumen + f" [{usuario}:{mensaje}→{respuesta}]")[-5000:]  # Mantener solo últimos 5000 chars
+    key_data["resumen"] = nuevo_resumen
+    return respuesta
+
+# =========================
+# 🔹 API IA
+# =========================
+@app.route("/api/ia", methods=["POST"])
+def api_ia():
+    key = request.headers.get("x-api-key")
     data = request.json
-    email = data.get("email")
-    password = data.get("password")
-    if not email or not password:
-        return jsonify({"error": "Faltan campos"}), 400
+    mensaje = data.get("mensaje")
+    usuario = data.get("usuario","anonimo")
+    key_data, error = validar_key(key)
+    if error:
+        return jsonify({"error":error}),401
+    if not mensaje:
+        return jsonify({"error":"Falta mensaje"}),400
 
-    hashed_pw = generate_password_hash(password)
+    respuesta = generar_respuesta(usuario, mensaje, key_data)
 
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    try:
-        cursor.execute("INSERT INTO users (email, password) VALUES (?, ?)", (email, hashed_pw))
-        conn.commit()
-        return jsonify({"message": "Usuario registrado exitosamente"}), 201
-    except sqlite3.IntegrityError:
-        return jsonify({"error": "Usuario ya existe"}), 400
-    finally:
-        conn.close()
-
-# =========================
-# 🔹 LOGIN (email + contraseña)
-# =========================
-@app.route("/login", methods=["POST"])
-def login():
-    data = request.json
-    email = data.get("email")
-    password = data.get("password")
-    if not email or not password:
-        return jsonify({"error": "Faltan campos"}), 400
-
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, email, password, plan FROM users WHERE email = ?", (email,))
-    user = cursor.fetchone()
-    conn.close()
-
-    if user and check_password_hash(user[2], password):
-        return jsonify({
-            "message": "Login exitoso",
-            "user": {
-                "id": user[0],
-                "email": user[1],
-                "plan": user[3]
-            }
-        })
-    else:
-        return jsonify({"error": "Email o contraseña incorrectos"}), 401
-
-# =========================
-# 🔹 USERS / SERVERS
-# =========================
-@app.route("/users", methods=["POST"])
-def crear_usuario():
-    data = request.json
-    email = data.get("email")
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    try:
-        cursor.execute("INSERT INTO users (email) VALUES (?)", (email,))
-        conn.commit()
-        return jsonify({"message": "Usuario creado"})
-    except:
-        return jsonify({"error": "Usuario ya existe"}), 400
-    finally:
-        conn.close()
-
-@app.route("/users", methods=["GET"])
-def obtener_users():
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users")
-    users = cursor.fetchall()
-    conn.close()
-    return jsonify(users)
-
-@app.route("/servers", methods=["POST"])
-def crear_server():
-    data = request.json
-    user_id = data.get("user_id")
-    name = data.get("name")
-    server_id = str(uuid.uuid4())
-
+    # Guardar conversación
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
     cursor.execute("""
-    INSERT INTO servers (id, user_id, name, status, created_at)
-    VALUES (?, ?, ?, ?, ?)
-    """, (server_id, user_id, name, "running", str(datetime.now())))
+        INSERT INTO mensajes (usuario,mensaje,respuesta,fecha)
+        VALUES (?,?,?,?)
+    """,(usuario,mensaje,respuesta,str(datetime.now())))
     conn.commit()
     conn.close()
 
+    key_data["uso"] = key_data.get("uso",0)+1
+    guardar_keys()
+
     return jsonify({
-        "message": "Servidor creado 🚀",
-        "id": server_id,
-        "name": name
+        "respuesta":respuesta,
+        "uso":key_data["uso"],
+        "limite":key_data["limite"],
+        "restante":key_data["limite"]-key_data["uso"]
     })
 
-@app.route("/servers", methods=["GET"])
-def obtener_servers():
+# =========================
+# 🔹 Consultar todas las conversaciones
+# =========================
+@app.route("/mensajes", methods=["GET"])
+def obtener_mensajes():
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM servers")
-    servers = cursor.fetchall()
+    cursor.execute("SELECT * FROM mensajes ORDER BY fecha ASC")
+    mensajes = cursor.fetchall()
     conn.close()
-    return jsonify(servers)
-
-@app.route("/servers/<int:user_id>", methods=["GET"])
-def servers_usuario(user_id):
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM servers WHERE user_id = ?", (user_id,))
-    servers = cursor.fetchall()
-    conn.close()
-    return jsonify(servers)
+    resultados = [{"id":m[0],"usuario":m[1],"mensaje":m[2],"respuesta":m[3],"fecha":m[4]} for m in mensajes]
+    return jsonify(resultados)
 
 # =========================
 # 🚀 RUN
 # =========================
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+if __name__=="__main__":
+    port=int(os.environ.get("PORT",10000))
+    app.run(host="0.0.0.0",port=port)
