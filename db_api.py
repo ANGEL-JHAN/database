@@ -90,6 +90,8 @@ def init_db():
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             email TEXT UNIQUE,
+            user TEXT UNIQUE,
+            name TEXT,
             password TEXT,
             plan TEXT DEFAULT 'free'
         )
@@ -117,15 +119,61 @@ def init_db():
 init_db()
 
 # =========================
+# 🔹 REGISTER
+# =========================
+@app.route("/register", methods=["POST"])
+def register():
+    data = request.json
+    email = data.get("email")
+    user = data.get("user")
+    name = data.get("name")
+    password = data.get("password")
+    
+    if not email or not password or not user or not name:
+        return jsonify({"error":"Faltan datos"}),400
+
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+    try:
+        hashed = generate_password_hash(password)
+        cursor.execute("INSERT INTO users (email,password,user,name) VALUES (?,?,?,?)",
+                       (email,hashed,user,name))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.close()
+        return jsonify({"error":"Usuario o email ya existe"}),400
+    conn.close()
+    return jsonify({"user":{"name":name,"user":user,"email":email}}),200
+
+# =========================
+# 🔹 LOGIN
+# =========================
+@app.route("/login", methods=["POST"])
+def login():
+    data = request.json
+    email = data.get("email")
+    password = data.get("password")
+    
+    if not email or not password:
+        return jsonify({"error":"Faltan datos"}),400
+
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT email,user,name,password FROM users WHERE email=?",(email,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row and check_password_hash(row[3], password):
+        return jsonify({"user":{"name":row[2],"user":row[1],"email":row[0]}}),200
+    return jsonify({"error":"Email o contraseña incorrectos"}),401
+
+# =========================
 # 🔹 IA MEMORIA OPTIMIZADA
 # =========================
 def generar_respuesta(usuario, mensaje, key_data):
-    """
-    Usa un resumen acumulativo para contexto infinito sin recargar toda la DB
-    """
     resumen = key_data.get("resumen","")
-    respuesta = f"{resumen} → Respuesta a '{mensaje}'"  # IA simulada con resumen
-    nuevo_resumen = (resumen + f" [{usuario}:{mensaje}→{respuesta}]")[-5000:]  # Mantener solo últimos 5000 chars
+    respuesta = f"{resumen} → Respuesta a '{mensaje}'"
+    nuevo_resumen = (resumen + f" [{usuario}:{mensaje}→{respuesta}]")[-5000:]
     key_data["resumen"] = nuevo_resumen
     return respuesta
 
@@ -146,7 +194,6 @@ def api_ia():
 
     respuesta = generar_respuesta(usuario, mensaje, key_data)
 
-    # Guardar conversación
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
     cursor.execute("""
