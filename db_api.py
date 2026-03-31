@@ -180,6 +180,17 @@ def obtener_mensajes():
     return jsonify(resultados)
 
 # =========================
+# 🔹 Ruta raíz + test
+# =========================
+@app.route("/", methods=["GET"])
+def home():
+    return "API de ANGEL OFC funcionando. Usa /api/ia con POST."
+
+@app.route("/test", methods=["GET"])
+def test():
+    return jsonify({"status":"ok","message":"Servidor activo"})
+
+# =========================
 # 🚀 RUN
 # =========================
 if __name__=="__main__":
